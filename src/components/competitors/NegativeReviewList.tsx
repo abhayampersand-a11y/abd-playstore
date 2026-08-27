@@ -96,8 +96,8 @@ export function NegativeReviewList({
 
       {truncated ? (
         <Alert severity="info">
-          This app has more reviews than one sweep can read. These are the most recent — enough to size the
-          complaints, but not literally every negative review ever written.
+          Play kept serving more pages than one sweep reads, so these are the complaints from the most recent
+          reviews — enough to size every recurring problem, but not literally every negative review ever written.
         </Alert>
       ) : null}
 

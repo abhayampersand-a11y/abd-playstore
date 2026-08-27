@@ -276,6 +276,12 @@ function wrapPlayError(error: unknown, context: string): AppError {
  * and filter locally. That is affordable - a page of 150 comes back in roughly
  * 300ms - but it is unbounded on a very large app, so the walk is capped by
  * both a page count and a wall-clock budget and reports when it stopped early.
+ *
+ * Those caps bind on essentially every app. Play keeps serving fresh pages long
+ * past the review count shown on the listing - measured on a listing claiming
+ * 277 reviews, 1,800 pages in were still unique - so the honest promise is
+ * "every negative review in the most recent few thousand", not "every negative
+ * review ever written", and the UI says so.
  */
 export interface NegativeReviewSweep {
   reviews: CleanReview[];
@@ -285,8 +291,8 @@ export interface NegativeReviewSweep {
   truncated: boolean;
 }
 
-const SWEEP_MAX_PAGES = 40;
-const SWEEP_BUDGET_MS = 45_000;
+const SWEEP_MAX_PAGES = 25;
+const SWEEP_BUDGET_MS = 30_000;
 const SWEEP_PAGE_SIZE = 150;
 
 export async function fetchNegativeReviews(params: {

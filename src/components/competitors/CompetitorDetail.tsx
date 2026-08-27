@@ -5,7 +5,9 @@ import CampaignRoundedIcon from '@mui/icons-material/CampaignRounded';
 import LaunchRoundedIcon from '@mui/icons-material/LaunchRounded';
 import RefreshRoundedIcon from '@mui/icons-material/RefreshRounded';
 import SearchOffRoundedIcon from '@mui/icons-material/SearchOffRounded';
+import SentimentDissatisfiedRoundedIcon from '@mui/icons-material/SentimentDissatisfiedRounded';
 import StarRoundedIcon from '@mui/icons-material/StarRounded';
+import Alert from '@mui/material/Alert';
 import Box from '@mui/material/Box';
 import Button from '@mui/material/Button';
 import Card from '@mui/material/Card';
@@ -27,11 +29,12 @@ import { EmptyState, ErrorState } from '@/components/common/States';
 import { useToast } from '@/components/common/ToastProvider';
 import { QuoteList } from '@/components/research/QuoteList';
 import { useResearchWorkspace } from '@/components/research/ResearchWorkspaceProvider';
-import { fetchCompetitorDetail } from '@/lib/api-client';
+import { fetchCompetitorDetail, fetchNegativeReviews } from '@/lib/api-client';
 import { toAppError, type AppError } from '@/lib/errors';
 import { compactNumber, formatDate, rating } from '@/lib/format';
-import type { Competitor } from '@/lib/types';
+import type { Competitor, NegativeReviewsResponse } from '@/lib/types';
 import { AppIcon } from './AppIcon';
+import { NegativeReviewList } from './NegativeReviewList';
 
 /**
  * One competitor, in full.
@@ -58,6 +61,25 @@ export function CompetitorDetail({ appId }: { appId: string }) {
     () => record?.competitors.find((entry) => entry.appId === appId),
     [record, appId],
   );
+
+  const loadNegatives = useCallback(async () => {
+    if (!record || !competitor) return;
+    setNegativesLoading(true);
+    setNegativesError(null);
+    try {
+      setNegatives(
+        await fetchNegativeReviews({
+          appId: competitor.appId,
+          country: record.input.country,
+          language: record.input.language,
+        }),
+      );
+    } catch (caught) {
+      setNegativesError(toAppError(caught));
+    } finally {
+      setNegativesLoading(false);
+    }
+  }, [record, competitor]);
 
   const deepDive = useCallback(async () => {
     if (!record || !competitor) return;
@@ -337,8 +359,8 @@ export function CompetitorDetail({ appId }: { appId: string }) {
             </Box>
 
             <SectionCard
-              title="Every negative review"
-              subtitle="Read the complaints in full, not just the sample above"
+              title="Negative reviews in depth"
+              subtitle="Every complaint in the most recent few thousand reviews"
               icon={<SentimentDissatisfiedRoundedIcon sx={{ fontSize: 19 }} />}
             >
               {negatives ? (
@@ -350,8 +372,9 @@ export function CompetitorDetail({ appId }: { appId: string }) {
               ) : (
                 <Stack spacing={2} alignItems="flex-start">
                   <Typography variant="body2" color="text.secondary" sx={{ lineHeight: 1.75 }}>
-                    The panels above sample a few reviews. This walks Play page by page and pulls back every
-                    1 and 2 star review it will give up — usually a few hundred, and it takes 10-30 seconds.
+                    The panels above sample a handful. This walks Play page by page and pulls back every 1 and 2
+                    star review in the most recent few thousand — usually several hundred complaints. Takes about
+                    20 seconds.
                   </Typography>
 
                   {negativesError ? (
@@ -369,7 +392,7 @@ export function CompetitorDetail({ appId }: { appId: string }) {
                       negativesLoading ? <CircularProgress size={16} color="inherit" /> : <SentimentDissatisfiedRoundedIcon />
                     }
                   >
-                    {negativesLoading ? 'Reading reviews…' : 'Load all negative reviews'}
+                    {negativesLoading ? 'Reading reviews…' : 'Load negative reviews'}
                   </Button>
                 </Stack>
               )}
