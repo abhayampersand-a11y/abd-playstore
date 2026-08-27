@@ -1,0 +1,65 @@
+// AppScout AI - PostgreSQL / Neon schema.
+//
+//   npx prisma generate
+//   npx prisma db push
+//
+// Set DATABASE_URL in .env first.
+//
+// ---------------------------------------------------------------------------
+// One table, deliberately.
+//
+// A `ResearchRecord` (src/lib/types.ts) is a self-contained document, and both
+// of the other shapes the UI needs - `ResearchListItem` and `SavedIdea` - are
+// *derived* from it by `toListItem` / `toSavedIdea` in `store/repository.ts`.
+// Giving them tables of their own would duplicate data that already exists and
+// create two ways for the same fact to be wrong.
+//
+// So the record is stored whole, as JSONB, and only the fields that list views
+// sort, filter or display are promoted to real columns. That is what lets
+// `list()` read a few hundred bytes per row instead of the ~200KB document.
+// ---------------------------------------------------------------------------
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Research {
+  id String @id
+
+  /// Account that owns this research - AUTH_USERNAME, or "local" when sign-in
+  /// is not configured. Every query filters on it, so enabling auth later
+  /// cannot retroactively expose one account's research to another.
+  owner String
+
+  createdAt DateTime
+  updatedAt DateTime
+
+  // Promoted for list views -------------------------------------------------
+  // Kept in sync on every write from the record itself; never edited directly.
+  keyword             String
+  country             String
+  stage               String
+  status              String
+  saved               Boolean @default(false)
+  competitorsAnalysed Int     @default(0)
+  reviewsAnalysed     Int     @default(0)
+  opportunityScore    Float?
+  recommendation      String?
+  appName             String?
+
+  // Token accounting, promoted so spend can be totalled without loading blobs.
+  inputTokens  Int @default(0)
+  outputTokens Int @default(0)
+
+  /// The complete ResearchRecord. JSONB so the document shape can evolve
+  /// without a migration; it is zod-validated on read, never trusted raw.
+  record Json
+
+  @@index([owner, createdAt])
+  @@index([owner, saved])
+}
