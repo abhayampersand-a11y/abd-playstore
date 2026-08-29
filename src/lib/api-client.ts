@@ -2,6 +2,7 @@ import { AppError, parseApiError } from './errors';
 import type {
   BuildPlan,
   Competitor,
+  CompetitorDossier,
   HealthResponse,
   NegativeReviewsResponse,
   OpportunityAnalysis,
@@ -97,6 +98,17 @@ export function signIn(credentials: LoginValues, signal?: AbortSignal): Promise<
 // signing the user out through a prefetch or an <img> tag.
 export function signOut(signal?: AbortSignal): Promise<{ signedOut: boolean }> {
   return request('/api/auth/logout', {}, signal);
+}
+
+/**
+ * The rest of the listing - permissions, data safety, the developer's other
+ * apps, Play's similar apps - fetched when the detail page opens.
+ */
+export function fetchCompetitorExtras(
+  params: { appId: string; country: string; language: string },
+  signal?: AbortSignal,
+): Promise<CompetitorDossier> {
+  return request('/api/competitor/extras', params, signal);
 }
 
 export function fetchNegativeReviews(

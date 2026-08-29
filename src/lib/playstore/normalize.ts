@@ -1,5 +1,14 @@
-import type { Competitor, CompetitorSummary, MarketStats, RatingHistogram } from '../types';
-import type { GPlayAppDetail, GPlaySearchResult } from './client';
+import type {
+  AppCategory,
+  AppPermission,
+  Competitor,
+  CompetitorSummary,
+  DataSafetyEntry,
+  DataSafetyReport,
+  MarketStats,
+  RatingHistogram,
+} from '../types';
+import type { GPlayAppDetail, GPlayDataSafety, GPlaySearchResult } from './client';
 import { daysSince } from '../format';
 
 const EMPTY_HISTOGRAM: RatingHistogram = { '1': 0, '2': 0, '3': 0, '4': 0, '5': 0 };
@@ -27,6 +36,46 @@ function normalizeHistogram(raw: Record<string, number> | undefined): RatingHist
   return total > 0 ? histogram : undefined;
 }
 
+const ENTITIES: Record<string, string> = {
+  amp: '&',
+  lt: '<',
+  gt: '>',
+  quot: '"',
+  apos: "'",
+  nbsp: ' ',
+  '#39': "'",
+  '#x27': "'",
+};
+
+/**
+ * Play serves listing text HTML-escaped, so a tagline like "Files & Docs"
+ * arrives as "Files &amp; Docs" and would be rendered that way - React escapes
+ * on output, it does not decode on input.
+ */
+export function decodeEntities(text: string): string {
+  return text.replace(/&(#x?[0-9a-f]+|[a-z]+);/gi, (match, name: string) => {
+    const direct = ENTITIES[name] ?? ENTITIES[name.toLowerCase()];
+    if (direct) return direct;
+    const numeric = /^#x/i.test(name)
+      ? Number.parseInt(name.slice(2), 16)
+      : name.startsWith('#')
+        ? Number.parseInt(name.slice(1), 10)
+        : Number.NaN;
+    return Number.isFinite(numeric) ? String.fromCodePoint(numeric) : match;
+  });
+}
+
+/** Flatten the small subset of HTML Play uses in listing prose into text. */
+export function htmlToText(html: string): string {
+  return decodeEntities(
+    html
+      .replace(/<br\s*\/?>/gi, '\n')
+      .replace(/<\/(p|div|li|h[1-6])>/gi, '\n')
+      .replace(/<li[^>]*>/gi, '- ')
+      .replace(/<[^>]+>/g, ''),
+  );
+}
+
 /** Strip the Play Store description down to something a human can skim. */
 export function cleanDescription(text: string | undefined, maxLength = 2200): string | undefined {
   if (!text) return undefined;
@@ -47,7 +96,7 @@ export function toCompetitorSummary(raw: GPlaySearchResult): CompetitorSummary {
     developerId: raw.developerId,
     icon: raw.icon,
     url: raw.url,
-    summary: raw.summary?.trim(),
+    summary: raw.summary ? decodeEntities(raw.summary).trim() || undefined : undefined,
     score: typeof raw.score === 'number' && Number.isFinite(raw.score) ? raw.score : undefined,
     free: raw.free ?? (raw.price ?? 0) === 0,
     priceText: raw.priceText,
@@ -81,7 +130,93 @@ export function toCompetitor(raw: GPlayAppDetail, rank: number): Competitor {
     headerImage: raw.headerImage,
     developerWebsite: raw.developerWebsite,
     privacyPolicy: raw.privacyPolicy,
+
+    // Everything the detail page shows beyond the headline metrics.
+    recentChanges: cleanRecentChanges(raw.recentChanges),
+    contentRatingDescription: raw.contentRatingDescription,
+    categories: toCategories(raw.categories),
+    video: raw.video,
+    videoImage: raw.videoImage,
+    androidMaxVersion: normalizeVaries(raw.androidMaxVersion),
+    price: numberOrUndefined(raw.price),
+    originalPrice: numberOrUndefined(raw.originalPrice),
+    available: raw.available,
+    preregister: raw.preregister,
+    earlyAccess: raw.earlyAccessEnabled,
+    inPlayPass: raw.isAvailableInPlayPass,
+    developerEmail: raw.developerEmail,
+    developerAddress: raw.developerAddress?.replace(/\s*\n\s*/g, ', '),
+    developerLegalName: raw.developerLegalName,
   };
+}
+
+/** "What's new" is HTML and can run long; a screenful is all anyone reads. */
+function cleanRecentChanges(raw: string | undefined): string | undefined {
+  if (!raw) return undefined;
+  return cleanDescription(htmlToText(raw), 1200);
+}
+
+function toCategories(raw: GPlayAppDetail['categories']): AppCategory[] | undefined {
+  const categories = (raw ?? [])
+    .filter((entry): entry is { name: string; id?: string } => Boolean(entry?.name))
+    .map((entry) => ({ name: entry.name, id: entry.id ?? undefined }));
+  return categories.length > 0 ? categories : undefined;
+}
+
+/** The scraper reports the literal 'VARY' when a build differs per device. */
+function normalizeVaries(value: string | undefined): string | undefined {
+  return !value || value === 'VARY' ? undefined : value;
+}
+
+export function toPermissions(
+  raw: Array<{ permission?: string; type?: string } | null> | undefined,
+): AppPermission[] {
+  const seen = new Set<string>();
+  const permissions: AppPermission[] = [];
+
+  for (const entry of raw ?? []) {
+    const permission = entry?.permission?.trim();
+    if (!permission) continue;
+    // Play lists the same permission under more than one group - storage shows
+    // up twice on most apps - and the reader only needs telling once.
+    const key = permission.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    permissions.push({ permission, type: entry?.type?.trim() || 'Other' });
+  }
+
+  return permissions;
+}
+
+export function toDataSafety(raw: GPlayDataSafety | undefined): DataSafetyReport | undefined {
+  if (!raw) return undefined;
+
+  const entries = (rows: GPlayDataSafety['collectedData']): DataSafetyEntry[] =>
+    (rows ?? [])
+      .filter((row): row is { data: string; type?: string; purpose?: string; optional?: boolean } =>
+        Boolean(row?.data),
+      )
+      .map((row) => ({
+        data: row.data,
+        type: row.type?.trim() || 'Other',
+        purpose: row.purpose?.trim() || undefined,
+        optional: row.optional,
+      }));
+
+  const report: DataSafetyReport = {
+    collected: entries(raw.collectedData),
+    shared: entries(raw.sharedData),
+    securityPractices: (raw.securityPractices ?? [])
+      .filter((row): row is { practice: string; description?: string } => Boolean(row?.practice))
+      .map((row) => ({ practice: row.practice, description: row.description?.trim() || undefined })),
+    privacyPolicyUrl: raw.privacyPolicyUrl,
+  };
+
+  return report.collected.length === 0 &&
+    report.shared.length === 0 &&
+    report.securityPractices.length === 0
+    ? undefined
+    : report;
 }
 
 function numberOrUndefined(value: number | undefined): number | undefined {

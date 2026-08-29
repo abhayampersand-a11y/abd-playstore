@@ -271,3 +271,6 @@ export const negativeReviewsRequestSchema = z.object({
   country: z.string().trim().toLowerCase().length(2),
   language: z.string().trim().toLowerCase().min(2).max(5),
 });
+
+/** Body of POST /api/competitor/extras - the same "one app, one market" lookup. */
+export const competitorExtrasRequestSchema = negativeReviewsRequestSchema;

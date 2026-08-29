@@ -1,10 +1,22 @@
 import 'server-only';
 
 import { AppError, toAppError } from '../errors';
-import type { CleanReview, Competitor, CompetitorSummary } from '../types';
+import type {
+  AppPermission,
+  CleanReview,
+  Competitor,
+  CompetitorSummary,
+  DataSafetyReport,
+} from '../types';
 import { loadPlayScraper, unwrapReviews, type GPlayReview } from './client';
 import { cleanReviews } from './reviews';
-import { dedupeApps, toCompetitor, toCompetitorSummary } from './normalize';
+import {
+  dedupeApps,
+  toCompetitor,
+  toCompetitorSummary,
+  toDataSafety,
+  toPermissions,
+} from './normalize';
 
 /** Play throttles hard; three concurrent requests is the sweet spot. */
 const CONCURRENCY = 3;
@@ -162,6 +174,91 @@ export async function fetchSimilarApps(params: {
   } catch {
     return [];
   }
+}
+
+// ---------------------------------------------------------------------------
+// Listing extras
+// ---------------------------------------------------------------------------
+
+export interface ListingExtras {
+  permissions: AppPermission[];
+  dataSafety?: DataSafetyReport;
+  developerApps: CompetitorSummary[];
+  similarApps: CompetitorSummary[];
+  /** Labels of the lookups Play would not answer, for the UI to own up to. */
+  unavailable: string[];
+}
+
+/**
+ * Everything Play knows about one app beyond its listing metrics: what it may
+ * touch on the device, what it does with the data, what else its developer
+ * ships, and what Play considers comparable.
+ *
+ * All four come from endpoints that Google changes without notice, and three of
+ * them are simply absent for some apps, so each is attempted independently: a
+ * failure costs that one panel, never the page. `unavailable` carries the
+ * failures so the UI can say "Play did not answer" instead of "none".
+ */
+export async function fetchListingExtras(params: {
+  appId: string;
+  country: string;
+  language: string;
+  developerId?: string;
+}): Promise<ListingExtras> {
+  const gplay = await loadPlayScraper();
+  const unavailable: string[] = [];
+  const options = { appId: params.appId, country: params.country, lang: params.language, throttle: 10 };
+
+  async function attempt<T>(label: string, fallback: T, run: () => Promise<T>): Promise<T> {
+    try {
+      return await withTimeout(run(), CALL_TIMEOUT_MS, label);
+    } catch {
+      unavailable.push(label);
+      return fallback;
+    }
+  }
+
+  const [permissions, dataSafety, developerApps, similarApps] = await Promise.all([
+    attempt<AppPermission[]>('Permissions', [], async () => {
+      if (!gplay.permissions) throw new AppError('SCRAPER_UNAVAILABLE', 'permissions() is missing.');
+      return toPermissions(await gplay.permissions({ ...options, short: false }));
+    }),
+
+    attempt<DataSafetyReport | undefined>('Data safety', undefined, async () => {
+      if (!gplay.datasafety) throw new AppError('SCRAPER_UNAVAILABLE', 'datasafety() is missing.');
+      return toDataSafety(await gplay.datasafety(options));
+    }),
+
+    attempt<CompetitorSummary[]>('Developer catalogue', [], async () => {
+      // Play only answers this for numeric developer ids; the older name-based
+      // ones ("Dropbox,+Inc.") 404, which is a missing panel, not an error.
+      if (!gplay.developer || !params.developerId) return [];
+      const raw = await gplay.developer({
+        devId: params.developerId,
+        country: params.country,
+        lang: params.language,
+        num: 24,
+        fullDetail: false,
+      });
+      return dedupeApps((raw ?? []).map(toCompetitorSummary))
+        .filter((app) => app.appId !== params.appId)
+        .slice(0, 12);
+    }),
+
+    attempt<CompetitorSummary[]>('Similar apps', [], async () => {
+      const raw = await gplay.similar({
+        appId: params.appId,
+        country: params.country,
+        lang: params.language,
+        fullDetail: false,
+      });
+      return dedupeApps((raw ?? []).map(toCompetitorSummary))
+        .filter((app) => app.appId !== params.appId)
+        .slice(0, 8);
+    }),
+  ]);
+
+  return { permissions, dataSafety, developerApps, similarApps, unavailable };
 }
 
 // ---------------------------------------------------------------------------

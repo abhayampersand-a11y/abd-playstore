@@ -5,7 +5,6 @@ import BookmarkRoundedIcon from '@mui/icons-material/BookmarkRounded';
 import DeleteOutlineRoundedIcon from '@mui/icons-material/DeleteOutlineRounded';
 import MoreVertRoundedIcon from '@mui/icons-material/MoreVertRounded';
 import Box from '@mui/material/Box';
-import Chip from '@mui/material/Chip';
 import IconButton from '@mui/material/IconButton';
 import ListItemIcon from '@mui/material/ListItemIcon';
 import ListItemText from '@mui/material/ListItemText';
@@ -24,7 +23,6 @@ import { useRouter } from 'next/navigation';
 import { useState } from 'react';
 
 import { useToast } from '@/components/common/ToastProvider';
-import { RecommendationBadge } from '@/components/common/Scores';
 import { plainNumber, relativeTime, score } from '@/lib/format';
 import { useResearchStore } from '@/lib/store/ResearchStore';
 import { labelForCountry } from '@/lib/validation';
@@ -36,7 +34,7 @@ import { ConfirmDialog } from '@/components/common/ConfirmDialog';
  * A row is a link to the workspace; the overflow menu carries the destructive
  * action so it never sits under a stray click.
  */
-export function ResearchList({ items, showStatus = true }: { items: ResearchListItem[]; showStatus?: boolean }) {
+export function ResearchList({ items }: { items: ResearchListItem[] }) {
   const router = useRouter();
   const toast = useToast();
   const { toggleSaved, removeRecord } = useResearchStore();
@@ -83,7 +81,6 @@ export function ResearchList({ items, showStatus = true }: { items: ResearchList
               <TableCell align="right">Competitors</TableCell>
               <TableCell align="right">Reviews</TableCell>
               <TableCell align="right">Score</TableCell>
-              {showStatus ? <TableCell>Verdict</TableCell> : null}
               <TableCell>Run</TableCell>
               <TableCell align="right" sx={{ width: 52 }} />
             </TableRow>
@@ -140,18 +137,6 @@ export function ResearchList({ items, showStatus = true }: { items: ResearchList
                     {typeof item.opportunityScore === 'number' ? score(item.opportunityScore) : '—'}
                   </Typography>
                 </TableCell>
-
-                {showStatus ? (
-                  <TableCell>
-                    {item.recommendation ? (
-                      <RecommendationBadge recommendation={item.recommendation} size="small" />
-                    ) : item.status === 'failed' ? (
-                      <Chip label="Analysis failed" size="small" color="error" variant="outlined" />
-                    ) : (
-                      <Chip label="Not analysed" size="small" variant="outlined" />
-                    )}
-                  </TableCell>
-                ) : null}
 
                 <TableCell>
                   <Typography variant="body2" color="text.secondary" noWrap>

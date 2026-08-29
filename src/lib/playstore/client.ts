@@ -52,7 +52,28 @@ export interface GPlayAppDetail extends GPlaySearchResult {
   headerImage?: string;
   developerWebsite?: string;
   developerEmail?: string;
+  developerAddress?: string;
+  developerLegalName?: string;
   privacyPolicy?: string;
+  recentChanges?: string;
+  contentRatingDescription?: string;
+  categories?: Array<{ name?: string; id?: string } | null>;
+  video?: string;
+  videoImage?: string;
+  androidMaxVersion?: string;
+  originalPrice?: number;
+  available?: boolean;
+  preregister?: boolean;
+  earlyAccessEnabled?: boolean;
+  isAvailableInPlayPass?: boolean;
+}
+
+/** Play's "Data safety" panel, as the scraper returns it. */
+export interface GPlayDataSafety {
+  sharedData?: Array<{ data?: string; type?: string; purpose?: string; optional?: boolean } | null>;
+  collectedData?: Array<{ data?: string; type?: string; purpose?: string; optional?: boolean } | null>;
+  securityPractices?: Array<{ practice?: string; description?: string } | null>;
+  privacyPolicyUrl?: string;
 }
 
 export interface GPlayReview {
@@ -102,6 +123,34 @@ export interface GPlayApi {
     country?: string;
     lang?: string;
     fullDetail?: boolean;
+  }): Promise<GPlaySearchResult[]>;
+
+  // The three below are served by Play's batchexecute endpoint rather than the
+  // listing HTML, so they are declared optional: they are the first things to
+  // disappear when Google reshuffles that API, and every caller treats a
+  // missing method the same way it treats a failed one.
+  permissions?(options: {
+    appId: string;
+    country?: string;
+    lang?: string;
+    short?: boolean;
+    throttle?: number;
+  }): Promise<Array<{ permission?: string; type?: string } | null>>;
+
+  datasafety?(options: {
+    appId: string;
+    country?: string;
+    lang?: string;
+    throttle?: number;
+  }): Promise<GPlayDataSafety>;
+
+  developer?(options: {
+    devId: string;
+    country?: string;
+    lang?: string;
+    num?: number;
+    fullDetail?: boolean;
+    throttle?: number;
   }): Promise<GPlaySearchResult[]>;
 
   sort: { NEWEST: number; RATING: number; HELPFULNESS: number };

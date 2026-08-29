@@ -67,6 +67,37 @@ export interface RatingHistogram {
   '5': number;
 }
 
+/** A Play category chip, e.g. { name: 'Strategy', id: 'GAME_STRATEGY' }. */
+export interface AppCategory {
+  name: string;
+  id?: string;
+}
+
+/** One Android permission the listing declares, e.g. "read your contacts". */
+export interface AppPermission {
+  permission: string;
+  /** Play's own grouping - "Contacts", "Storage", "Other". */
+  type: string;
+}
+
+/** One row of Play's "Data safety" table. */
+export interface DataSafetyEntry {
+  /** The datum itself, e.g. "Email address". */
+  data: string;
+  /** Its group, e.g. "Personal info". */
+  type: string;
+  purpose?: string;
+  /** False when the app cannot be used without handing this over. */
+  optional?: boolean;
+}
+
+export interface DataSafetyReport {
+  collected: DataSafetyEntry[];
+  shared: DataSafetyEntry[];
+  securityPractices: Array<{ practice: string; description?: string }>;
+  privacyPolicyUrl?: string;
+}
+
 /** Full competitor record produced by the detail step. */
 export interface Competitor extends CompetitorSummary {
   /** Rank within this research run, 1-based. Drives table ordering. */
@@ -98,6 +129,40 @@ export interface Competitor extends CompetitorSummary {
   reviewStats?: CompetitorReviewStats;
   /** Play Store "similar apps", best-effort. */
   similarApps?: CompetitorSummary[];
+
+  // -- The rest of the listing ----------------------------------------------
+  // Everything below is what someone sizing up a market to build into wants to
+  // read: what the app ships, how it charges, what it touches on the device,
+  // and who is behind it. All optional - Play omits plenty of it per app, and
+  // records written before these fields existed simply do not have them.
+
+  /** "What's new", tags stripped. What the team is actually shipping. */
+  recentChanges?: string;
+  /** Play's plain-English note on the content rating. */
+  contentRatingDescription?: string;
+  categories?: AppCategory[];
+  /** Promo video and its still frame. Games nearly always have one. */
+  video?: string;
+  videoImage?: string;
+  androidMaxVersion?: string;
+  /** Numeric price in `currency`; 0 for a free app. */
+  price?: number;
+  /** Only set while the app is discounted. */
+  originalPrice?: number;
+  /** False when Play will not serve this app in the researched market. */
+  available?: boolean;
+  preregister?: boolean;
+  earlyAccess?: boolean;
+  inPlayPass?: boolean;
+  developerEmail?: string;
+  developerAddress?: string;
+  developerLegalName?: string;
+
+  // -- Fetched on demand by the detail page (see CompetitorDossier) ----------
+  permissions?: AppPermission[];
+  dataSafety?: DataSafetyReport;
+  /** Everything else the same developer publishes. */
+  developerApps?: CompetitorSummary[];
 }
 
 // ---------------------------------------------------------------------------
@@ -527,6 +592,22 @@ export interface HealthResponse {
   maxCompetitorDetail: number;
   maxReviewsPerApp: number;
   checkedAt: string;
+}
+
+/**
+ * Response of POST /api/competitor/extras.
+ *
+ * `competitor` is a freshly scraped listing rather than the stored one, so a
+ * record written before a field existed still shows that field today. Every
+ * other lookup is best-effort: Play answers some of them for some apps only,
+ * and a refusal is reported in `unavailable` rather than failing the request.
+ */
+export interface CompetitorDossier {
+  /** Fresh listing, with permissions, data safety, the developer's catalogue
+   *  and Play's similar apps already attached. */
+  competitor: Competitor;
+  /** Human-readable names of the lookups Play would not answer. */
+  unavailable: string[];
 }
 
 /** Response of POST /api/competitor/reviews. */
