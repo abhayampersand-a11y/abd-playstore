@@ -9,7 +9,7 @@ import type {
   RatingHistogram,
 } from '../types';
 import type { GPlayAppDetail, GPlayDataSafety, GPlaySearchResult } from './client';
-import { daysSince } from '../format';
+import { daysSince, sliceText } from '../format';
 
 const EMPTY_HISTOGRAM: RatingHistogram = { '1': 0, '2': 0, '3': 0, '4': 0, '5': 0 };
 
@@ -85,7 +85,7 @@ export function cleanDescription(text: string | undefined, maxLength = 2200): st
     .replace(/\n{3,}/g, '\n\n')
     .trim();
   if (!normalized) return undefined;
-  return normalized.length > maxLength ? `${normalized.slice(0, maxLength).trimEnd()}…` : normalized;
+  return normalized.length > maxLength ? `${sliceText(normalized, maxLength).trimEnd()}…` : normalized;
 }
 
 export function toCompetitorSummary(raw: GPlaySearchResult): CompetitorSummary {

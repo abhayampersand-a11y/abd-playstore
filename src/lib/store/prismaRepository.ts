@@ -3,6 +3,7 @@ import 'server-only';
 import { Prisma, PrismaClient } from '@prisma/client';
 
 import { AppError, toAppError } from '../errors';
+import { stripLoneSurrogates } from '../format';
 import type { ResearchListItem, ResearchRecord, SavedIdea } from '../types';
 import { toSavedIdea, type ResearchRepository } from './repository';
 
@@ -85,8 +86,30 @@ function toRow(record: ResearchRecord, owner: string) {
     appName: record.analysis?.recommendedApp.name ?? record.buildPlan?.appName ?? null,
     inputTokens: record.usage.inputTokens,
     outputTokens: record.usage.outputTokens,
-    record: record as unknown as Prisma.InputJsonValue,
+    record: storable(record) as Prisma.InputJsonValue,
   };
+}
+
+/**
+ * Make a document Postgres will accept.
+ *
+ * A JavaScript string can hold half of an emoji, and `JSON.stringify` renders
+ * that orphaned half as a lone `�` escape. Postgres rejects the whole
+ * document for it - "unexpected end of hex escape" - which fails the save of an
+ * entire research run over one broken character in one scraped review.
+ *
+ * The places that truncate scraped text no longer create these (see
+ * `sliceText`), but a record also carries HTML-entity text and model output,
+ * and this is the last point where the invariant can actually be guaranteed. A
+ * lost run is far too expensive to leave to every upstream getting it right.
+ */
+function storable(value: unknown): unknown {
+  if (typeof value === 'string') return stripLoneSurrogates(value);
+  if (Array.isArray(value)) return value.map(storable);
+  if (value && typeof value === 'object') {
+    return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, storable(item)]));
+  }
+  return value;
 }
 
 /**

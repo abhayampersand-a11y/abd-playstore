@@ -8,6 +8,7 @@ import type {
   SentimentSplit,
   ThemeBucket,
 } from '../types';
+import { sliceText } from '../format';
 import type { GPlayReview } from './client';
 import { emptyHistogram } from './normalize';
 import { COMPLAINT_THEMES, FEATURE_REQUEST_THEMES, PRAISE_THEMES, REQUEST_SIGNALS, type Theme } from './themes';
@@ -47,7 +48,7 @@ export function cleanReviews(appId: string, raw: GPlayReview[]): CleanReview[] {
     cleaned.push({
       appId,
       score: Math.round(score),
-      text: text.length > MAX_REVIEW_LENGTH ? `${text.slice(0, MAX_REVIEW_LENGTH).trimEnd()}…` : text,
+      text: text.length > MAX_REVIEW_LENGTH ? `${sliceText(text, MAX_REVIEW_LENGTH).trimEnd()}…` : text,
       date: toIso(review.date),
       thumbsUp: Number.isFinite(Number(review.thumbsUp)) ? Number(review.thumbsUp) : 0,
       version: review.version ?? undefined,
@@ -200,7 +201,7 @@ export function extractFeatureRequests(reviews: CleanReview[]): {
 
 function shortQuote(text: string): string {
   const trimmed = text.trim();
-  return trimmed.length > MAX_QUOTE_LENGTH ? `${trimmed.slice(0, MAX_QUOTE_LENGTH).trimEnd()}…` : trimmed;
+  return trimmed.length > MAX_QUOTE_LENGTH ? `${sliceText(trimmed, MAX_QUOTE_LENGTH).trimEnd()}…` : trimmed;
 }
 
 function round1(value: number): number {

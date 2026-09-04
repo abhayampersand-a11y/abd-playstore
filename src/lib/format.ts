@@ -83,7 +83,51 @@ export function daysSince(iso: string | undefined | null): number | undefined {
 export function truncate(text: string, max: number): string {
   const trimmed = text.trim();
   if (trimmed.length <= max) return trimmed;
-  return `${trimmed.slice(0, Math.max(0, max - 1)).trimEnd()}…`;
+  return `${sliceText(trimmed, Math.max(0, max - 1)).trimEnd()}…`;
+}
+
+/**
+ * Cut a string to `max` UTF-16 code units without splitting a character.
+ *
+ * An emoji is two code units, so a plain `slice` can leave half of one behind.
+ * That is not cosmetic: `JSON.stringify` renders the orphaned half as a lone
+ * `\ud83d` escape, and Postgres rejects the whole document when the record is
+ * saved. Every truncation of scraped text goes through here.
+ */
+export function sliceText(text: string, max: number): string {
+  if (text.length <= max) return text;
+  const last = text.charCodeAt(max - 1);
+  // A high surrogate sitting on the cut has its other half on the far side.
+  const end = last >= 0xd800 && last <= 0xdbff ? max - 1 : max;
+  return text.slice(0, end);
+}
+
+/**
+ * Drop surrogate halves that have lost their pair.
+ *
+ * The truncation above will not create one, but scraped HTML entities, upstream
+ * text that was itself cut badly, and model output all can - and a single one
+ * makes a record unstorable. Strings without any emoji at all, which is nearly
+ * all of them, take the fast path out.
+ */
+export function stripLoneSurrogates(text: string): string {
+  if (!/[\uD800-\uDFFF]/.test(text)) return text;
+
+  let out = '';
+  for (let index = 0; index < text.length; index += 1) {
+    const code = text.charCodeAt(index);
+    if (code >= 0xd800 && code <= 0xdbff) {
+      const next = text.charCodeAt(index + 1);
+      if (next >= 0xdc00 && next <= 0xdfff) {
+        out += text[index] + text[index + 1];
+        index += 1;
+      }
+      continue; // unpaired high half - drop it
+    }
+    if (code >= 0xdc00 && code <= 0xdfff) continue; // unpaired low half
+    out += text[index];
+  }
+  return out;
 }
 
 export function initials(text: string): string {
